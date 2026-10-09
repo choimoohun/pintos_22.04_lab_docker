@@ -92,6 +92,8 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	int64_t wake_tick;					// 깨어날 시간
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -132,6 +134,8 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+
+void thread_set_wake(int64_t ticks);	// 스레드가 일어날 시간을 설정. (예: 현재 tick + 원하는 시간)
 
 int thread_get_priority (void);
 void thread_set_priority (int);

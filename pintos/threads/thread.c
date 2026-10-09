@@ -308,6 +308,13 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+// 스레드가 일어날 시간을 설정
+void thread_set_wake(int64_t ticks)
+{
+	thread_current()->wake_tick = ticks;
+}
+
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
