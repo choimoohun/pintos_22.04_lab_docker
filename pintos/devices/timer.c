@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
+#include <list.h>
 #include "threads/interrupt.h"
 #include "threads/io.h"
 #include "threads/synch.h"
@@ -16,6 +17,9 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
+
+// 잠자는 스레드들을 넣어두는 리스트
+static struct list sleep_list;
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
@@ -41,6 +45,9 @@ timer_init (void) {
 	outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
 	outb (0x40, count & 0xff);
 	outb (0x40, count >> 8);
+
+	// 리스트 초기화
+	list_init(&sleep_list);
 
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -87,14 +94,34 @@ timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
+// wake_tick이 더 작은 스레드가 앞으로 오도록 정렬하는 함수
+static bool compare_wake_tick(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+	return a->wake_tick < b->wake_tick;
+}
+
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	if (ticks <= 0)
+	{
+		return;
+	}
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	
+	// 인터럽트를 중지
+	enum intr_level old_level = intr_disable();
+	int64_t start = timer_ticks ();
+	
+	thread_set_wake(start + ticks);	// 스레드의 wake_time을 설정
+	list_insert_ordered(&sleep_list, &thread_current()->elem, compare_wake_tick, NULL);
+	thread_block();					// 스레드의 상태를 block으로 만든다.
+
+	// 인터럽트 원래대로
+	intr_set_level(old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +153,25 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	int64_t current_tick = ticks;
+
+	// sleep_list가 빌 때까지 검사
+	while (!list_empty(&sleep_list))
+	{
+		struct thread *t = list_entry(list_front(&sleep_list), struct thread, elem);
+
+		// 검사하는 스레드의 wake_tick이 현재 tick보다 작거나 같으면 깨우기
+		if (t->wake_tick <= current_tick)
+		{
+			list_pop_front(&sleep_list);
+			thread_unblock(t);
+		}
+		else
+		{
+			break;
+		}
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
