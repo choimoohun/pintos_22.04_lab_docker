@@ -7,9 +7,10 @@
 #include "threads/thread.h"
 #include "devices/timer.h"
 
-void
-test_alarm_zero (void) 
+void test_alarm_zero(void)
 {
-  timer_sleep (0);
-  pass ();
+  /* 0이나 음수가 들어왔을때 예외처리를 해서 안전하게 넘어가라.  */
+  timer_sleep(0);
+  /* 여기까지 무사히 오면 PASS 출력. */
+  pass();
 }
