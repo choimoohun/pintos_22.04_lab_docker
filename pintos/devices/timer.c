@@ -110,12 +110,11 @@ timer_sleep (int64_t ticks) {
 		return;
 	}
 
-	int64_t start = timer_ticks ();
-
 	ASSERT (intr_get_level () == INTR_ON);
-
+	
 	// 인터럽트를 중지
 	enum intr_level old_level = intr_disable();
+	int64_t start = timer_ticks ();
 	
 	thread_set_wake(start + ticks);	// 스레드의 wake_time을 설정
 	list_insert_ordered(&sleep_list, &thread_current()->elem, compare_wake_tick, NULL);
@@ -155,7 +154,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 
-	int64_t current_tick = timer_ticks();
+	int64_t current_tick = ticks;
 
 	// sleep_list가 빌 때까지 검사
 	while (!list_empty(&sleep_list))
