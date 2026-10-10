@@ -15,6 +15,8 @@
 #include "userprog/process.h"
 #endif
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -159,6 +161,29 @@ void
 thread_print_stats (void) {
 	printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
 			idle_ticks, kernel_ticks, user_ticks);
+}
+
+// 우선순위를 확인하고 해당 스레드가 ready_list의 첫 번째 스레드보다 우선순위가 더 높으면 선점
+void preempt_if_needed(void)
+{
+	// 인터럽트를 중지
+	enum intr_level old_level = intr_disable();
+
+	if (list_empty(&ready_list))
+	{
+		return;
+	}
+
+	struct thread *t = thread_current();
+	struct thread *next = list_entry(list_front(&ready_list), struct thread, elem);
+
+	if (t->priority < next->priority)
+	{
+		thread_yield();
+	}
+
+	// 인터럽트 원래대로
+	intr_set_level(old_level);
 }
 
 /* Creates a new kernel thread named NAME with the given initial
@@ -328,11 +353,40 @@ void thread_set_wake(int64_t ticks)
 	thread_current()->wake_tick = ticks;
 }
 
+// 우선순위 재계산
+void refresh_priority(struct thread *t)
+{
+	// 리스트가 비어있다면 초기 우선순위로
+	if (list_empty(&t->donations))
+	{
+		t->priority = t->init_priority;
+		return;
+	}
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+	struct list_elem *e = list_begin(&t->donations);
+	int max_priority = t->init_priority;
+
+	// 리스트를 순회하며 기부자 중 우선순위의 최대값 찾기
+	while (e != list_end(&t->donations))
+	{
+		struct thread *temp = list_entry(e, struct thread, donation_elem);
+		max_priority = MAX(max_priority, temp->priority);
+		e = list_next(e);
+	}
+	
+	// 우선순위를 최대값으로 변경
+	t->priority = max_priority;
+}
+
+// 우선순위를 변경하고 선점을 체크
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	struct thread *t = thread_current();
+	
+	t->init_priority = new_priority;		// 초기 우선순위 변경
+	refresh_priority(t);					// 우선순위 refresh
+
+	preempt_if_needed();
 }
 
 /* Returns the current thread's priority. */

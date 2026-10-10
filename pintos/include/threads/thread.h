@@ -127,6 +127,8 @@ void thread_start (void);
 void thread_tick (void);
 void thread_print_stats (void);
 
+void preempt_if_needed(void);			// 스레드 t가 현재 스레드보다 우선순위가 높으면 현재 스레드가 양보
+
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
@@ -142,6 +144,7 @@ void thread_yield (void);
 
 void thread_set_wake(int64_t ticks);	// 스레드가 일어날 시간을 설정. (예: 현재 tick + 원하는 시간)
 
+void refresh_priority(struct thread *t);// 우선순위 재계산
 int thread_get_priority (void);
 void thread_set_priority (int);
 
