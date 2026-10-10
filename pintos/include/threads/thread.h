@@ -97,6 +97,11 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	int init_priority;              /* 기부받기 전 원래 우선순위 */
+	struct lock *wait_on_lock;      /* 지금 기다리는 lock (연쇄 기부용) */
+	struct list donations;          /* 나에게 기부한 스레드 목록 */
+	struct list_elem donation_elem; /* 남의 donations에 들어갈 연결고리 */
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
