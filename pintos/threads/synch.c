@@ -251,8 +251,26 @@ void lock_release(struct lock *lock)
 {
 	ASSERT(lock != NULL);
 	ASSERT(lock_held_by_current_thread(lock));
-
+	struct thread *cur = thread_current();
+	/* 내 명단을 한명씩 보면서, 기다리는 락이 현재 락과 같은지 본다. */
+	/* 리스트로 구할때는 list함수를 쓰지만, 스레드의 필드를 구할 때는 (wait_on_lock)을 할때는 스레드의 주소를 구해야 하고
+	그렇게 되면 list_entry를 통해서 구해야 한다. */
+	struct list_elem *e = list_begin(&cur->donations);
+	/* list_entry를 통해서 구해야 wait_on_lock을 구할 수 있다. 근데 현재 스레드의 락을 기다리는 이들의 목록을 알려고 하면
+	리스트로 구하지만. 그 각 기부자들이 기다리는 락이 뭔지 파악을 해야 한다. 그러려면 list_entry로 구해야 한다. */
+	while (e != list_end(&cur->donations))
+	{
+		struct thread *t = list_entry(e, struct thread, donation_elem);
+		if (t->wait_on_lock == lock)
+			e = list_remove(e);
+		else
+			e = list_next(e);
+		/* 내 우선순위를 다시 계산한다. */
+		refresh_priority();
+	}
+	/* 락 주인을 비운다. */
 	lock->holder = NULL;
+	/* 세마포어 waiters에서 잠든 사람 한 명을 깨우고, value를 1 올림 (열쇠 반납)*/
 	sema_up(&lock->semaphore);
 }
 
