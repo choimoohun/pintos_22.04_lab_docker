@@ -210,6 +210,7 @@ void lock_acquire(struct lock *lock)
 				h->priority = cur->priority;
 				if (h->wait_on_lock == NULL)
 					break;
+				/* 지금 기부받은 사람이 기다리는 락이 주인한테로, 다음 기부대상을 옮긴다. */
 				h = h->wait_on_lock->holder;
 			}
 		}
