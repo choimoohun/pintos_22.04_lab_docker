@@ -127,7 +127,7 @@ void thread_start (void);
 void thread_tick (void);
 void thread_print_stats (void);
 
-void preempt_if_needed(void);			// 스레드 t가 현재 스레드보다 우선순위가 높으면 현재 스레드가 양보
+void preempt_if_needed(void);			// ready_list의 첫 번째 스레드가 현재 스레드보다 우선순위가 더 높으면 선점
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);

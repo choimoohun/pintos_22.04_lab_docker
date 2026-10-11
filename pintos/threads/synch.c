@@ -98,10 +98,15 @@ sema_try_down (struct semaphore *sema) {
 	return success;
 }
 
-/* Up or "V" operation on a semaphore.  Increments SEMA's value
-   and wakes up one thread of those waiting for SEMA, if any.
+// thread.c에서 비교하는 함수와는 다르게 정렬 대신 최댓값을 선택하기 위해 부등호를 `<`로 사용
+static bool compare_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+	return a->priority < b->priority;
+}
 
-   This function may be called from an interrupt handler. */
+// 세마포어 값을 증가시키고 대기자 중 우선순위가 가장 높은 스레드 깨우기
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -109,10 +114,18 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+	
+	// 우선순위가 가장 높은 대기자를 찾아 리스트에서 제거
+	if (!list_empty(&sema->waiters))
+	{
+		struct list_elem *e = list_max(&sema->waiters, compare_priority, NULL);
+
+		list_remove(e);
+		thread_unblock(list_entry(e, struct thread, elem));
+	}
+
 	sema->value++;
+	preempt_if_needed();	// 현재 스레드가 양보하도록 하기
 	intr_set_level (old_level);
 }
 
@@ -240,6 +253,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
 	struct semaphore semaphore;         /* This semaphore. */
+	struct thread *waiter				// 대기 스레드를 바로 찾기 위한 포인터
 };
 
 /* Initializes condition variable COND.  A condition variable
@@ -282,19 +296,23 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
+	waiter.waiter = thread_current();				// 현재 스레드를 대기자로
 	list_push_back (&cond->waiters, &waiter.elem);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
 }
 
-/* If any threads are waiting on COND (protected by LOCK), then
-   this function signals one of them to wake up from its wait.
-   LOCK must be held before calling this function.
+// semaphore_elem의 대기자끼리 비교
+static bool compare_cond_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct semaphore_elem *a = list_entry(a_, struct semaphore_elem, elem);
+	const struct semaphore_elem *b = list_entry(b_, struct semaphore_elem, elem);
 
-   An interrupt handler cannot acquire a lock, so it does not
-   make sense to try to signal a condition variable within an
-   interrupt handler. */
+	return a->waiter->priority < b->waiter->priority;
+}
+
+// 조건 변수의 대기자 중 우선순위가 가장 높은 스레드에 신호 보내기
 void
 cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (cond != NULL);
@@ -302,9 +320,19 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
+	enum intr_level old_level = intr_disable();
+
+	// 우선순위가 가장 높은 대기자를 리스트에서 제거하고 sema_up
 	if (!list_empty (&cond->waiters))
-		sema_up (&list_entry (list_pop_front (&cond->waiters),
-					struct semaphore_elem, elem)->semaphore);
+	{
+		struct list_elem *e = list_max(&cond->waiters, compare_cond_priority, NULL);
+		struct semaphore_elem *waiter = list_entry(e, struct semaphore_elem, elem);
+
+		list_remove(e);
+		sema_up(&waiter->semaphore);
+	}
+
+	intr_set_level(old_level);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

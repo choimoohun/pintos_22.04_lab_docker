@@ -163,24 +163,29 @@ thread_print_stats (void) {
 			idle_ticks, kernel_ticks, user_ticks);
 }
 
-// 우선순위를 확인하고 해당 스레드가 ready_list의 첫 번째 스레드보다 우선순위가 더 높으면 선점
+// ready_list의 첫 번째 스레드가 현재 스레드보다 우선순위가 더 높으면 선점
 void preempt_if_needed(void)
 {
 	// 인터럽트를 중지
 	enum intr_level old_level = intr_disable();
 
-	if (list_empty(&ready_list))
+    if (!list_empty (&ready_list))
 	{
-		return;
-	}
+        struct thread *next = list_entry (list_front (&ready_list), struct thread, elem);
 
-	struct thread *t = thread_current();
-	struct thread *next = list_entry(list_front(&ready_list), struct thread, elem);
-
-	if (t->priority < next->priority)
-	{
-		thread_yield();
-	}
+		// ready_list의 첫 번째 스레드가 현재 스레드의 우선순위보다 높으면 양보
+        if (next->priority > thread_current ()->priority)
+		{
+            if (intr_context ())
+			{
+				intr_yield_on_return ();
+			}
+            else
+			{
+                thread_yield ();
+			}
+        }
+    }
 
 	// 인터럽트 원래대로
 	intr_set_level(old_level);
