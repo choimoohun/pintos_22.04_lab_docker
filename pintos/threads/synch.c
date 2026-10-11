@@ -253,7 +253,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
 	struct semaphore semaphore;         /* This semaphore. */
-	struct thread *waiter				// 대기 스레드를 바로 찾기 위한 포인터
+	struct thread *waiter;				// 대기 스레드를 바로 찾기 위한 포인터
 };
 
 /* Initializes condition variable COND.  A condition variable
