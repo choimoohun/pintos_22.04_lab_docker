@@ -195,14 +195,45 @@ lock_init (struct lock *lock) {
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
-void
-lock_acquire (struct lock *lock) {
-	ASSERT (lock != NULL);
-	ASSERT (!intr_context ());
-	ASSERT (!lock_held_by_current_thread (lock));
-
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+void 
+lock_acquire(struct lock *lock) {
+	ASSERT(lock != NULL);
+	ASSERT(!intr_context());
+	ASSERT(!lock_held_by_current_thread(lock));
+	/* 인터럽트 끄기 */
+	enum intr_level old_level = intr_disable();
+	struct thread *cur = thread_current();
+	/* 락에 주인이 있으면 나는 곧 잠든다. 
+	그 전에, 주인이 락을 빨리 풀 수 있도록 내 우선순위를 기부한다. */
+	if (lock->holder != NULL)
+	{
+		/* 내가 이 락을 기다린다고 기록 */
+		cur->wait_on_lock = lock;
+		/* 락 주인의 명단에 내 고리를 건다. */
+		list_push_back(&lock->holder->donations, &cur->donation_elem);
+		/* h = 기부받을 스레드 (처음에는 락 주인) */
+		struct thread *h = lock->holder;
+		for (int depth = 0; depth < 8; depth++)
+		{
+			/* 내가 h보다 높지 않으면 더 기부할 필요가 없다. */
+			if (cur->priority <= h->priority)
+					break;
+			h->priority = cur->priority;
+			/* h가 다른 락을 기다리며 자고 있으면, 그 락의 주인으로 옮겨 계속 기부한다. 
+			기다리는 락이 없으면 (실제로 실행될 수 있는 스레드) 멈춘다. */
+			if (h->wait_on_lock == NULL)
+				break;
+			h = h->wait_on_lock->holder;
+			}
+	}
+	/* 락이 비어있으면 바로 가져가거나(value 1->0), 주인이 있으면 풀릴 때까지 잠든다. */
+	sema_down(&lock->semaphore);
+	/* 이제 기다리지 않음. */
+	cur->wait_on_lock = NULL;
+	/* 내가 락 주인 */
+	lock->holder = cur;
+	/* 인터럽트 원래대로 */
+	intr_set_level(old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -230,13 +261,34 @@ lock_try_acquire (struct lock *lock) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
-void
-lock_release (struct lock *lock) {
-	ASSERT (lock != NULL);
-	ASSERT (lock_held_by_current_thread (lock));
-
+void 
+lock_release(struct lock *lock) {
+	ASSERT(lock != NULL);
+	ASSERT(lock_held_by_current_thread(lock));
+	/* 인터럽트 비활성화 */
+	enum intr_level old_level = intr_disable();
+	struct thread *cur = thread_current();
+	/* 내 명단(나에게 기부한 스레드)를 처음부터 본다. */
+	struct list_elem *e = list_begin(&cur->donations);
+	while (e != list_end(&cur->donations))
+	{
+		/* 고리(donation_elem)가 달린 스레드를 꺼낸다. */
+		struct thread *t = list_entry(e, struct thread, donation_elem);
+		/* 이 락을 기다리던 스레드는 곧 락을 받으니 명단에서 뺀다.
+			 다른 락을 기다리는 스레드는 남긴다. */
+		if (t->wait_on_lock == lock)
+			e = list_remove(e);
+		else
+			e = list_next(e);
+	}
+	/* 남은 기부자 기준으로 내 우선순위를 다시 계산한다. (sema_up 전에 내려야 양보가 일어난다.) */
+	refresh_priority(cur);
+	/* 락 주인을 비운다. */
 	lock->holder = NULL;
-	sema_up (&lock->semaphore);
+	/* 가장 높은 대기자를 깨우고, 그 스레드가 나보다 높으면 양보한다. */
+	sema_up(&lock->semaphore);
+	/* 인터럽트 원래대로 */
+	intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
