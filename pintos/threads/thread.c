@@ -26,6 +26,9 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+static int load_avg;			// MLFQS 전용: 실행 중이거나 실행 준비가 된 스레드 수를 평활화한 시스템 부하 값 
+static struct list all_list;	// MLFQS 전용: ready_list처럼 사용하는 준비 큐
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -425,6 +428,31 @@ int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
 	return 0;
+}
+
+void increment_recent_cpu(void)
+{
+	// TODO: MLFQS 전용 함수 구현
+}
+
+void cal_priority(struct thread *t)
+{
+	// TODO: MLFQS 전용 함수 구현
+}
+
+void cal_recent_cpu(void)
+{
+	// TODO: MLFQS 전용 함수 구현
+}
+
+void cal_load_avg(void)
+{
+	// TODO: MLFQS 전용 함수 구현
+}
+
+void recal_priority_all(void)
+{
+	// TODO: MLFQS 전용 함수 구현
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
