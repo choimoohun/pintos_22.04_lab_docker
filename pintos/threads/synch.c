@@ -125,7 +125,7 @@ sema_up (struct semaphore *sema) {
 	}
 
 	sema->value++;
-	preempt_if_needed();	// 현재 스레드가 양보하도록 하기
+	preempt_if_needed();	// 깨운 스레드가 현재 스레드보다 높으면 양보
 	intr_set_level (old_level);
 }
 

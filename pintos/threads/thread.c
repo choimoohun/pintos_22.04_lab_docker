@@ -173,7 +173,7 @@ void preempt_if_needed(void)
 	{
         struct thread *next = list_entry (list_front (&ready_list), struct thread, elem);
 
-		// ready_list의 첫 번째 스레드가 현재 스레드의 우선순위보다 높으면 양보
+		// 인터럽트 처리 중에는 바로 yield할 수 없으므로, 핸들러가 끝난 뒤 양보하도록 예약
         if (next->priority > thread_current ()->priority)
 		{
             if (intr_context ())
@@ -238,10 +238,7 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 
 	// 우선순위를 확인하고 생성된 스레드가 현재 스레드보다 우선순위가 더 높으면 선점
-	if (t->priority > thread_current()->priority)
-	{
-		thread_yield();
-	}
+	preempt_if_needed();
 
 	return tid;
 }
@@ -387,11 +384,14 @@ void refresh_priority(struct thread *t)
 void
 thread_set_priority (int new_priority) {
 	struct thread *t = thread_current();
+	enum intr_level old_level = intr_disable();
 	
 	t->init_priority = new_priority;		// 초기 우선순위 변경
 	refresh_priority(t);					// 우선순위 refresh
 
 	preempt_if_needed();
+
+	intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
