@@ -102,6 +102,10 @@ struct thread {
 	struct list donations;          /* 나에게 기부한 스레드 목록 */
 	struct list_elem donation_elem; /* 남의 donations에 들어갈 연결고리 */
 
+	// MLFQS
+	int recent_cpu;					// MLFQS 전용: 스레드의 최근 CPU 사용량
+	int nice;						// MLFQS 전용: 다른 스레드에 CPU를 양보하려는 정도. 양수이면 우선순위가 낮아짐.
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -152,6 +156,12 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void increment_recent_cpu(void);		// MLFQS 전용: 스레드의 recent_cpu 증가
+void cal_priority(struct thread *t);	// MLFQS 전용: 스레드의 우선순위 계산
+void cal_recent_cpu(void);				// MLFQS 전용: 모든 스레드의 recent_cpu 계산
+void cal_load_avg(void);				// MLFQS 전용: 전역 변수 load_avg 계산
+void recal_priority_all(void);			// MLFQS 전용: 모든 스레드의 우선순위 계산
 
 void do_iret (struct intr_frame *tf);
 
