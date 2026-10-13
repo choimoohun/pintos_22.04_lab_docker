@@ -32,6 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static void remove_with_lock (struct lock *lock);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -205,7 +207,8 @@ lock_acquire(struct lock *lock) {
 	struct thread *cur = thread_current();
 	/* 락에 주인이 있으면 나는 곧 잠든다. 
 	그 전에, 주인이 락을 빨리 풀 수 있도록 내 우선순위를 기부한다. */
-	if (lock->holder != NULL)
+	/* [문서 Advanced Scheduler] MLFQS에서는 priority donation을 하지 않음 */
+	if (!thread_mlfqs && lock->holder != NULL)
 	{
 		/* 내가 이 락을 기다린다고 기록 */
 		cur->wait_on_lock = lock;
@@ -220,8 +223,8 @@ lock_acquire(struct lock *lock) {
 					break;
 			h->priority = cur->priority;
 			/* h가 다른 락을 기다리며 자고 있으면, 그 락의 주인으로 옮겨 계속 기부한다. 
-			기다리는 락이 없으면 (실제로 실행될 수 있는 스레드) 멈춘다. */
-			if (h->wait_on_lock == NULL)
+			기다리는 락이 없거나, 그 락의 주인이 이미 풀어서 없으면 멈춘다. */
+			if (h->wait_on_lock == NULL || h->wait_on_lock->holder == NULL)
 				break;
 			h = h->wait_on_lock->holder;
 			}
@@ -255,34 +258,43 @@ lock_try_acquire (struct lock *lock) {
 	return success;
 }
 
+/* 이 락을 기다리며 나에게 기부한 스레드만 donations에서 제거 (다른 락의 기부는 유지)*/
+static void remove_with_lock(struct lock *lock) {
+	struct thread *cur = thread_current();
+	struct list_elem *e = list_begin(&cur->donations);
+	while (e != list_end(&cur->donations)) 
+	{
+		struct thread *t = list_entry(e, struct thread, donation_elem);
+		if (t->wait_on_lock == lock)
+			e = list_remove(e);
+		else
+			e = list_next(e);
+	}
+}
+
 /* Releases LOCK, which must be owned by the current thread.
    This is lock_release function.
 
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+
 void 
 lock_release(struct lock *lock) {
 	ASSERT(lock != NULL);
 	ASSERT(lock_held_by_current_thread(lock));
+	
 	/* 인터럽트 비활성화 */
 	enum intr_level old_level = intr_disable();
-	struct thread *cur = thread_current();
-	/* 내 명단(나에게 기부한 스레드)를 처음부터 본다. */
-	struct list_elem *e = list_begin(&cur->donations);
-	while (e != list_end(&cur->donations))
-	{
-		/* 고리(donation_elem)가 달린 스레드를 꺼낸다. */
-		struct thread *t = list_entry(e, struct thread, donation_elem);
-		/* 이 락을 기다리던 스레드는 곧 락을 받으니 명단에서 뺀다.
-			 다른 락을 기다리는 스레드는 남긴다. */
-		if (t->wait_on_lock == lock)
-			e = list_remove(e);
-		else
-			e = list_next(e);
+	
+	/* [문서 Advanced Scheduler] MLFQS에서는 donation이 없으므로 정리도 건너뜀 */
+	if (!thread_mlfqs) {
+		/* 해당 락 때문에 나한테 우선순위를 준 스레드를 그 목록에서 뺌 */
+		remove_with_lock(lock);
+		/* 남은 기부자 기준으로 재계산 */
+		refresh_priority(thread_current());
+
 	}
-	/* 남은 기부자 기준으로 내 우선순위를 다시 계산한다. (sema_up 전에 내려야 양보가 일어난다.) */
-	refresh_priority(cur);
 	/* 락 주인을 비운다. */
 	lock->holder = NULL;
 	/* 가장 높은 대기자를 깨우고, 그 스레드가 나보다 높으면 양보한다. */
@@ -300,7 +312,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 
 	return lock->holder == thread_current ();
 }
-
+
 /* One semaphore in a list. */
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
