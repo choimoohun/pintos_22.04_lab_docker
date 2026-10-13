@@ -8,7 +8,7 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-
+#define PRIORITY_RECAL_TICKS 4 /* [문서 B.2] priority는 4틱마다 재계산 */
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -147,21 +147,35 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	/* MLFQS 계산 주기 확인 */
+	if (thread_mlfqs) {
+		increment_recent_cpu();  /* [문서 B.3] 매 틱 */
+		/* [문서 B.3, B.4] timer_ticks() % TIMER_FREQ == 0 인 순간 정확히 갱신
+		   [구현] recent_cpu 공식에 load_avg가 쓰이므로 load_avg를 먼저 계산 */
+		if (ticks % TIMER_FREQ == 0) {
+			cal_load_avg();
+			cal_recent_cpu();
+			recal_priority_all();
+		}
+		/* 4틱마다 계산 : 실행 중인 스레드만 바뀌므로 현재 스레드만 */
+		else if (ticks % PRIORITY_RECAL_TICKS == 0)  
+			recal_priority_current();
+	}
 	thread_tick ();
 
 	int64_t current_tick = ticks;
-
+ 
 	// sleep_list가 빌 때까지 검사
 	while (!list_empty(&sleep_list))
 	{
 		struct thread *t = list_entry(list_front(&sleep_list), struct thread, elem);
 
-		// 검사하는 스레드의 wake_tick이 현재 tick보다 작거나 같으면 깨우기
+		// 검사하는 스레드의 wake_tick이 현재  tick보다 작거나 같으면 깨우기
 		if (t->wake_tick <= current_tick)
 		{
 			list_pop_front(&sleep_list);
@@ -173,6 +187,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 		}
 	}
 }
+
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
