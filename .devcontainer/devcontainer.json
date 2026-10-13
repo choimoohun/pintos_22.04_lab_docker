@@ -1,6 +1,14 @@
 {
     "name": "pintos-dev",
-    "dockerFile": "Dockerfile",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "options": [
+            "--platform=linux/amd64"
+        ]
+    },
+    "runArgs": [
+        "--platform=linux/amd64"
+    ],
     "remoteUser": "jungle",
     "customizations": {
         "vscode": {
