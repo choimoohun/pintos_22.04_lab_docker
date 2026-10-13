@@ -105,6 +105,7 @@ struct thread {
 	// MLFQS
 	int recent_cpu;					// MLFQS 전용: 스레드의 최근 CPU 사용량
 	int nice;						// MLFQS 전용: 다른 스레드에 CPU를 양보하려는 정도. 양수이면 우선순위가 낮아짐.
+	struct list_elem allelem;		// MLFQS 전용: all_list를 위한 elem
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
